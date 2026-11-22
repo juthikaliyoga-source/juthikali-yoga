@@ -1,0 +1,43 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My progress</title><link rel="stylesheet" href="shared.css"></head><body><div class="wrap" id="app">Loading…</div>
+<script src="common.js"></script>
+<script>
+const app=document.getElementById('app');
+const param=new URLSearchParams(location.search).get('id');
+const viewing=!!param, id=param||myId();
+const pcOf=a=>Math.round(a.sc/a.t*100), ic=p=>p>=80?'🍦':p>=50?'🍭':'';
+(async function(){
+ if(!viewing)await flush();
+ let attempts=null,remoteErr=false;
+ try{const r=await fetch('/api/progress?id='+encodeURIComponent(id));if(r.ok)attempts=(await r.json()).attempts;else remoteErr=true}catch(e){remoteErr=true}
+ if(!attempts){ if(viewing){app.innerHTML='<a href="./">← Home</a><h1>Progress</h1><div class="card">Could not load this progress link. Check the link and your internet.</div>';return}
+   attempts=hist() } // own device fallback
+ else if(!viewing){ // merge in unsynced local ones
+   const un=hist().filter(a=>!a.synced);attempts=attempts.concat(un)}
+ attempts=attempts.slice().sort((a,b)=>a.d<b.d?-1:1);
+ const data={};await Promise.all([1,2,3].map(async s=>{try{data[s]=await (await fetch('data/set'+s+'.json')).json()}catch(e){data[s]=[]}}));
+ render(attempts,data,remoteErr);
+})();
+function render(A,data,remoteErr){
+ const link=location.origin+location.pathname+'?id='+id;
+ const best={};A.forEach(a=>{best[a.s]=Math.max(best[a.s]||0,pcOf(a))});
+ // weak questions: per set, per question: missed count / attempts of that set
+ const att={1:0,2:0,3:0},miss={};
+ A.forEach(a=>{att[a.s]++;a.w.forEach(n=>{const k=a.s+'-'+n;miss[k]=(miss[k]||0)+1})});
+ const weak=Object.keys(miss).map(k=>{const [s,n]=k.split('-').map(Number);const q=(data[s]||[]).find(x=>x.n===n);return q?{s,q,m:miss[k],t:att[s]}:null}).filter(Boolean)
+   .sort((x,y)=>y.m/y.t-x.m/x.t||y.m-x.m).slice(0,25);
+ const last5=A.slice(-5).map(pcOf);
+ app.innerHTML=`<a href="./">← Home</a><h1>📈 ${viewing?'Progress (shared view)':'My progress'}</h1>
+ <div class="sub">${A.length} attempts${remoteErr&&!viewing?' · showing this phone only (offline)':''}</div>
+ <div class="card"><b>Best per set</b><table>${[1,2,3].map(s=>`<tr><td>${SETS[s]}</td><td>${att[s]?best[s]+'% '+ic(best[s]):'—'}</td><td class="sub">${att[s]} tries</td></tr>`).join('')}</table>
+ ${last5.length>1?`<div class="sub" style="margin-top:8px">Last ${last5.length} scores: ${last5.join('% → ')}%</div>`:''}</div>
+ <div class="card"><b>Attempts</b>${A.length?`<table><tr><th>Date</th><th>Set</th><th>Score</th></tr>${A.slice().reverse().slice(0,40).map(a=>`<tr><td>${new Date(a.d).toLocaleDateString()} ${new Date(a.d).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</td><td>${a.s}</td><td>${a.sc}/${a.t} · ${pcOf(a)}% ${ic(pcOf(a))}</td></tr>`).join('')}</table>`:'<div class="sub">No attempts yet.</div>'}</div>
+ <div class="card"><b>Questions to revise</b> <span class="sub">(most often missed first)</span>
+ ${weak.length?weak.map(w=>`<div class="rv"><span class="sub">Set ${w.s}</span> ${esc(w.q.q)}<br><span class="sub">Missed ${w.m} of ${w.t} tries</span><br>Correct: <b style="color:var(--ok)">${esc(w.q.o[w.q.a])}</b></div>`).join(''):'<div class="sub">Nothing missed yet.</div>'}</div>
+ ${viewing?'':`<div class="card"><b>Share this progress</b><div class="sub">Open this link on any phone to see these results:</div>
+ <div style="word-break:break-all;font-size:14px;margin:8px 0" id="lk">${esc(link)}</div>
+ <button class="btn alt" onclick="cp()">Copy link</button><div class="sub" id="cpm"></div></div>`}`;
+}
+function cp(){const t=document.getElementById('lk').textContent;const m=document.getElementById('cpm');
+ (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>m.textContent='Copied ✓').catch(()=>m.textContent='Press and hold the link to copy it.')}
+</script></body></html>

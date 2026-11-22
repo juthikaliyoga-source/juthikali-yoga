@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Yoga MCQ Quiz</title><link rel="stylesheet" href="shared.css"></head><body><div class="wrap" id="app">Loading…</div>
+<script src="common.js"></script>
+<script>
+const app=document.getElementById('app');
+const SET=+new URLSearchParams(location.search).get('set')||3;
+let Q=[],list=[],ans=[],cur=0,confirming=false,live=LS.get('yoga-live',false);
+function shuf(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+const nAns=()=>ans.filter(x=>x!==null).length;
+const liveScore=()=>list.filter((q,i)=>ans[i]===q.a).length;
+const tier=pc=>pc>=80?{e:'🍦',t:'Ice cream earned! Wonderful!'}:pc>=50?{e:'🍭',t:'Lollipop earned! Well done!'}:{e:'🌱',t:'No treat yet, but practice makes perfect. Try again!'};
+fetch('data/set'+SET+'.json').then(r=>r.json()).then(d=>{Q=d;home();flush()}).catch(()=>app.textContent='Could not load questions. Check your internet and reload.');
+function home(){
+ app.innerHTML=`<a href="./">← All sets</a><h1>🧘 ${SETS[SET]}</h1><div class="sub">${Q.length} questions</div>
+ <div class="card"><div class="sub" style="margin-bottom:8px">Answer freely, go back and change any answer, and nothing is marked until you press Submit.</div>
+ <label style="display:flex;gap:10px;align-items:center;margin:10px 0"><input type="checkbox" id="sh" style="width:20px;height:20px"> Shuffle question order</label>
+ <button class="btn" onclick="start()">Start</button><a class="btn alt" href="progress">📈 My progress</a></div>`;
+}
+function start(){list=document.getElementById('sh')&&document.getElementById('sh').checked?shuf(Q):Q.slice();redo()}
+function redo(){ans=list.map(()=>null);cur=0;confirming=false;show();window.scrollTo(0,0)}
+function show(){
+ const q=list[cur];
+ app.innerHTML=`<div class="top"><span>Question ${cur+1} / ${list.length}</span><span>Answered ${nAns()} / ${list.length}</span></div>
+ <div class="bar"><i style="width:${nAns()/list.length*100}%"></i></div>
+ <div style="margin-top:8px"><button class="pill${live?' on':''}" onclick="toggleLive()">Live score: ${live?'ON':'OFF'}</button></div>
+ ${live?`<div class="live">Score so far: <b>${liveScore()}</b> / ${nAns()} answered <span class="sub">(this shows which answers are right)</span></div>`:''}
+ <div class="card"><div class="q">${esc(q.q)}</div>
+ ${q.o.map((o,k)=>`<button class="opt${ans[cur]===k?' sel':''}" onclick="pick(${k})">${'ABCD'[k]}. ${esc(o)}</button>`).join('')}
+ ${ans[cur]!==null?`<button class="btn alt" style="padding:8px;font-size:15px" onclick="clr()">Clear my answer</button>`:''}
+ <div class="row"><button class="btn alt" ${cur===0?'disabled':''} onclick="go(${cur-1})">← Previous</button>
+ <button class="btn alt" ${cur===list.length-1?'disabled':''} onclick="go(${cur+1})">Next →</button></div></div>
+ <div class="card"><div class="sub">Jump to a question (shaded = answered)</div><div class="grid">
+ ${list.map((_,i)=>`<button class="g${ans[i]!==null?' done':''}${i===cur?' cur':''}" onclick="go(${i})">${i+1}</button>`).join('')}</div>
+ ${confirming?`<div class="warn">${nAns()<list.length?`<b>${list.length-nAns()} question(s) unanswered.</b> `:''}Submit now? You can't change answers after this.
+ <div class="row"><button class="btn" onclick="submit()">Yes, submit</button><button class="btn alt" onclick="confirming=false;show()">Keep editing</button></div></div>`
+ :`<button class="btn" onclick="confirming=true;show();window.scrollTo(0,document.body.scrollHeight)">Submit</button>`}</div>`;
+}
+function toggleLive(){live=!live;LS.set('yoga-live',live);show()}
+function pick(k){ans[cur]=k;confirming=false;show()}
+function clr(){ans[cur]=null;show()}
+function go(i){cur=i;confirming=false;show();window.scrollTo(0,0)}
+async function submit(){
+ const sc=liveScore(),pc=Math.round(sc/list.length*100),tr=tier(pc);
+ const prevAll=hist().filter(a=>a.s===SET).map(a=>Math.round(a.sc/a.t*100));
+ const prev=prevAll.length?Math.max(...prevAll):null;
+ const h=hist();h.push({s:SET,d:new Date().toISOString(),sc,t:list.length,w:list.filter((q,i)=>ans[i]!==q.a).map(q=>q.n),synced:false});saveHist(h);
+ app.innerHTML=`<h1>Result</h1><div class="card"><div class="reward">${tr.e}</div><div style="text-align:center"><b>${tr.t}</b></div>
+ ${prev!==null&&pc>prev?`<div class="star">⭐ New personal best! (was ${prev}%)</div>`:''}
+ <div class="big">${sc} / ${list.length}</div>
+ <div style="text-align:center" class="sub">${pc}% ${pc>=80?'· Excellent! 🌟':pc>=60?'· Good, keep going':'· Keep practising 🙏'}</div>
+ <div class="sync" id="sy" style="text-align:center">Saving…</div>
+ <button class="btn" onclick="redo()">Redo the whole set</button>
+ <a class="btn alt" href="progress">📈 My progress</a><a class="btn alt" href="./">All sets</a></div>
+ <div class="card"><b>Review</b>${list.map((q,i)=>{const ok=ans[i]===q.a;return `<div class="rv"><span class="tag ${ok?'ok':'bad'}">${ok?'✓':'✗'} ${i+1}.</span> ${esc(q.q)}<br>
+ ${ok?`Your answer: <b>${esc(q.o[q.a])}</b>`:`Your answer: <b style="color:var(--bad)">${ans[i]===null?'not answered':esc(q.o[ans[i]])}</b><br>Correct: <span style="color:var(--ok)"><b>${esc(q.o[q.a])}</b></span>`}</div>`}).join('')}</div>`;
+ window.scrollTo(0,0);
+ const ok=await flush();const sy=document.getElementById('sy');
+ if(sy)sy.textContent=ok?'✓ Saved and synced':'Saved on this phone. Will sync when online.';
+}
+</script></body></html>
